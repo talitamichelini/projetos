@@ -1,0 +1,21 @@
+[33m74b54d0[m[33m ([m[1;31morigin/master[m[33m)[m fix: resolve conflito gitignore
+[33m4d62e89[m feat: adiciona pasta blog
+[33m2b47028[m feat: projetos - to-do-go, url-shortener-go e blog python
+[33mea3f41d[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Delete requirements.txt
+[33mbd79359[m Delete main.py
+[33ma1bc44f[m Delete index.html
+[33m25be23c[m Delete README.md
+[33m313fea2[m Delete .gitignore
+[33mc49b1ce[m Delete app directory
+[33m6337e9b[m Delete __pycache__ directory
+[33mefcf383[m fix: remove .env do repositório
+[33me75ab6d[m Merge branch 'main' of https://github.com/talitamichelini/projetos
+[33m84308bf[m fix: remove arquivos desnecessários do repositório
+[33m180d4e2[m feat: blog com painel admin em Python + FastAPI
+[33m704c573[m Modifications
+[33mbf0ea57[m Finalizado Projeto To-DO-API
+[33mf38e715[m Criando projeto TO-DO-API
+[33m979acc3[m URL shortener em go
+[33m1b8e3d1[m URL shortener em go
+[33m74da0ca[m projeto em go
+[33mcb9bd36[m primeiro projeto - convite de páscoa
