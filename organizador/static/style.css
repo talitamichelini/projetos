@@ -1,0 +1,135 @@
+/* ===== Variáveis (cores e medidas) ===== */
+:root {
+  --fundo: #f6f7f5;
+  --card: #ffffff;
+  --borda: #e4e6e2;
+  --texto: #1f2421;
+  --suave: #6b726d;
+  --acento: #2f3b34;
+  --verde: #2e8b57;   --verde-bg: #e6f4ec;
+  --amarelo: #a97a00; --amarelo-bg: #fdf3d3;
+  --vermelho: #c0392b; --vermelho-bg: #fbe7e4;
+  --alerta: #8a2a1f;
+  --raio: 10px;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: "Segoe UI", system-ui, -apple-system, sans-serif; color: var(--texto); background: var(--fundo); line-height: 1.45; }
+a { color: inherit; text-decoration: none; }
+h1 { font-size: 1.6rem; margin: 0 0 4px; }
+h2 { font-size: 1.05rem; margin: 32px 0 12px; }
+p { margin: 0; }
+.suave { color: var(--suave); font-size: .9rem; }
+:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+
+/* ===== Layout: menu lateral (PC) / barra inferior (celular) ===== */
+.nav { position: fixed; inset: 0 auto 0 0; width: 210px; background: var(--card); border-right: 1px solid var(--borda); padding: 24px 14px; display: flex; flex-direction: column; gap: 4px; }
+.marca { font-weight: 700; font-size: 1.05rem; padding: 0 10px 20px; }
+.nav a { padding: 10px; border-radius: 8px; color: var(--suave); }
+.nav a:hover { background: var(--fundo); }
+.nav a.ativo { background: var(--acento); color: #fff; }
+main { margin-left: 210px; padding: 32px; max-width: 1040px; }
+
+@media (max-width: 720px) {
+  .nav { inset: auto 0 0 0; width: auto; flex-direction: row; justify-content: space-around; padding: 6px; border-right: 0; border-top: 1px solid var(--borda); z-index: 5; }
+  .marca { display: none; }
+  .nav a { flex: 1; text-align: center; font-size: .85rem; }
+  main { margin: 0; padding: 20px 16px 90px; }
+}
+
+/* ===== Cabeçalho de página ===== */
+.topo { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+.migalha { font-size: .85rem; color: var(--suave); margin-bottom: 8px; display: inline-block; }
+.migalha:hover { color: var(--texto); }
+
+/* ===== Botões ===== */
+.btn { display: inline-block; border: 1px solid var(--acento); background: var(--acento); color: #fff; padding: 9px 16px; border-radius: 8px; font: inherit; cursor: pointer; }
+.btn:hover { opacity: .9; }
+.btn.sec { background: var(--card); color: var(--texto); border-color: var(--borda); }
+.btn.perigo { background: var(--card); color: var(--vermelho); border-color: var(--vermelho-bg); }
+.btn.pequeno { padding: 6px 12px; font-size: .85rem; }
+
+/* ===== Cards ===== */
+.card { background: var(--card); border: 1px solid var(--borda); border-radius: var(--raio); padding: 18px; }
+.grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.resumo { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+@media (max-width: 720px) { .resumo { grid-template-columns: 1fr 1fr; } }
+.numero { font-size: 2rem; font-weight: 700; line-height: 1.1; margin-top: 4px; }
+.numero.v { color: var(--verde); } .numero.r { color: var(--vermelho); }
+
+/* ===== Status ===== */
+.selo { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: .8rem; font-weight: 600; white-space: nowrap; }
+.selo.concluido { background: var(--verde-bg); color: var(--verde); }
+.selo.andamento { background: var(--amarelo-bg); color: var(--amarelo); }
+.selo.atrasado { background: var(--vermelho-bg); color: var(--vermelho); }
+.prazo-atraso { color: var(--vermelho); font-weight: 600; }
+
+/* ===== Lista de tarefas ===== */
+.lista { background: var(--card); border: 1px solid var(--borda); border-radius: var(--raio); overflow: hidden; }
+.linha { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; padding: 14px 18px; border-bottom: 1px solid var(--borda); align-items: center; }
+.linha:last-child { border-bottom: 0; }
+.linha:hover { background: var(--fundo); }
+.linha .nome { font-weight: 600; }
+.linha.destaque { border-left: 4px solid var(--vermelho); }
+.vazio { padding: 20px; color: var(--suave); }
+
+/* ===== Conta ===== */
+.conta h3 { margin: 0 0 12px; font-size: 1.05rem; }
+.conta .nums { display: flex; gap: 18px; margin-bottom: 16px; font-size: .9rem; color: var(--suave); }
+.conta .nums b { display: block; font-size: 1.4rem; color: var(--texto); }
+.conta .nums b.r { color: var(--vermelho); }
+
+/* ===== Filtro por profissional ===== */
+.filtros { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.chip { border: 1px solid var(--borda); background: var(--card); padding: 6px 14px; border-radius: 999px; font: inherit; font-size: .88rem; cursor: pointer; }
+.chip.ativo { background: var(--acento); color: #fff; border-color: var(--acento); }
+
+/* ===== Detalhes / formulário ===== */
+.detalhes { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 24px; }
+@media (max-width: 720px) { .detalhes { grid-template-columns: 1fr; } }
+.detalhes dt { font-size: .82rem; color: var(--suave); margin-bottom: 2px; }
+.detalhes dd { margin: 0; font-weight: 600; }
+.painel { max-width: 640px; }
+label { display: block; font-weight: 600; font-size: .9rem; margin: 16px 0 6px; }
+input, select, textarea { width: 100%; padding: 10px; border: 1px solid var(--borda); border-radius: 8px; font: inherit; background: #fff; }
+textarea { min-height: 90px; resize: vertical; }
+.acoes { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 22px; }
+.faixa { background: var(--amarelo-bg); color: #6b4f00; border-radius: 8px; padding: 10px 14px; font-size: .88rem; margin-bottom: 20px; }
+
+#form-profissional button {
+  margin-top: 12px;
+}
+
+/* ===== Aviso temporário ===== */
+.aviso { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--acento); color: #fff; padding: 11px 18px; border-radius: 8px; font-size: .9rem; opacity: 0; pointer-events: none; transition: opacity .2s; max-width: 90vw; z-index: 10; }
+.aviso.visivel { opacity: 1; }
+@media (max-width: 720px) { .aviso { bottom: 80px; } }
+@media (prefers-reduced-motion: reduce) { .aviso { transition: none; } }
+
+/* ===== Novidades: perfil, seletor de status, histórico, relatório ===== */
+.perfil { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; color: var(--suave); }
+.perfil label { display: inline; margin: 0; font-weight: 400; font-size: .85rem; }
+.perfil select { width: auto; padding: 6px 10px; }
+.pilha { display: grid; gap: 14px; max-width: 640px; }
+.nome { font-weight: 600; }
+.conta .nums b.v { color: var(--verde); }
+.switch { display: inline-flex; align-items: center; gap: 10px; border: 0; background: none; font: inherit; cursor: pointer; padding: 0; }
+.switch .knob { width: 42px; height: 24px; border-radius: 999px; background: var(--amarelo); position: relative; transition: background .2s; }
+.switch .knob::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .2s; }
+.switch[aria-checked="true"] .knob { background: var(--verde); }
+.switch[aria-checked="true"] .knob::after { transform: translateX(18px); }
+.linha-det { border-bottom: 1px solid var(--borda); }
+.linha-det:last-child { border-bottom: 0; }
+.linha-det summary { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 18px; cursor: pointer; }
+.linha-det summary:hover { background: var(--fundo); }
+.det-corpo { padding: 0 18px 16px; font-size: .9rem; display: grid; gap: 8px; }
+.papel { background: var(--card); border: 1px solid var(--borda); border-radius: var(--raio); padding: 28px; }
+.rolar { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .88rem; min-width: 720px; }
+th { text-align: left; color: var(--suave); font-weight: 600; border-bottom: 2px solid var(--borda); padding: 8px; }
+td { vertical-align: top; padding: 10px 8px; border-bottom: 1px solid var(--borda); }
+.perigo-card { border-color: var(--vermelho-bg); }
+@media (max-width: 720px) { .nav a { font-size: .72rem; padding: 8px 2px; } .papel { padding: 16px; } }
+@media (prefers-reduced-motion: reduce) { .switch .knob, .switch .knob::after { transition: none; } }
+
+.grupo { font-size: .95rem; margin: 22px 0 8px; }
+.grupo a:hover { text-decoration: underline; }
