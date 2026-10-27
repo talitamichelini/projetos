@@ -1,9 +1,107 @@
 
+import os
 import sqlite3
+import smtplib
+from email.message import EmailMessage
+from dotenv import load_dotenv
 from flask import Flask, render_template, request
+from datetime import datetime
+from apscheduler.schedulers.background import BackgroundScheduler
+
+load_dotenv()
 
 app = Flask(__name__)
 
+def enviar_email(destinatario, assunto, mensagem):
+    email_remetente = os.getenv("EMAIL_REMETENTE")
+    senha_app = os.getenv("EMAIL_SENHA_APP")
+
+    if not email_remetente or not senha_app:
+        raise ValueError("Credenciais de e-mail não configuradas.")
+
+    email = EmailMessage()
+    email["From"] = email_remetente
+    email["To"] = destinatario
+    email["Subject"] = assunto
+    email.set_content(mensagem)
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as servidor:
+        servidor.login(email_remetente, senha_app)
+        servidor.send_message(email)
+
+def verificar_tarefas_vencidas():
+    preparar_tabela_alertas()
+
+    conexao = conectar_banco()
+    try:
+        tarefas = conexao.execute("""
+            SELECT
+                t.id,
+                t.titulo,
+                t.prazo,
+                t.status,
+                c.nome AS cliente
+            FROM tarefas t
+            JOIN contas c ON c.id = t.conta_id
+            WHERE LOWER(t.status) != 'concluido'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM alertas_enviados a
+                  WHERE a.tarefa_id = t.id
+              )
+        """).fetchall()
+
+        agora = datetime.now()
+
+        for tarefa in tarefas:
+            try:
+                prazo = datetime.fromisoformat(
+                    tarefa["prazo"].replace("Z", "+00:00")
+                )
+
+                # Os prazos cadastrados pelo formulário são locais.
+                if prazo.tzinfo is not None:
+                    prazo = prazo.replace(tzinfo=None)
+
+            except (ValueError, AttributeError):
+                continue
+
+            if agora < prazo:
+                continue
+
+            destinatario = os.getenv("EMAIL_DESTINATARIO")
+            if not destinatario:
+                print("Destinatário do e-mail não configurado.")
+                return
+
+            assunto = f"Prazo vencido: {tarefa['titulo']}"
+            mensagem = (
+                "Uma tarefa do Organizador está com o prazo vencido.\n\n"
+                f"Cliente: {tarefa['cliente']}\n"
+                f"Tarefa: {tarefa['titulo']}\n"
+                f"Prazo: {tarefa['prazo']}\n\n"
+                "Acesse o Organizador para consultar a tarefa."
+            )
+
+            try:
+                enviar_email(destinatario, assunto, mensagem)
+
+                conexao.execute("""
+                    INSERT INTO alertas_enviados (tarefa_id, enviado_em)
+                    VALUES (?, ?)
+                """, (tarefa["id"], agora.isoformat()))
+
+                conexao.commit()
+                print(f"Alerta enviado para a tarefa {tarefa['id']}.")
+
+            except Exception as erro:
+                print(
+                    f"Erro ao enviar alerta da tarefa "
+                    f"{tarefa['id']}: {erro}"
+                )
+
+    finally:
+        conexao.close()
 
 def conectar_banco():
     conexao = sqlite3.connect("organizador.db")
@@ -11,16 +109,26 @@ def conectar_banco():
     conexao.execute("PRAGMA foreign_keys = ON")
     return conexao
 
+def preparar_tabela_alertas():
+    conexao = conectar_banco()
+    try:
+        conexao.execute("""
+            CREATE TABLE IF NOT EXISTS alertas_enviados (
+                tarefa_id INTEGER PRIMARY KEY,
+                enviado_em TEXT NOT NULL
+            )
+        """)
+        conexao.commit()
+    finally:
+        conexao.close()
 
 def texto(dados, campo):
     valor = dados.get(campo, "")
     return valor.strip() if isinstance(valor, str) else ""
 
-
 @app.route("/")
 def inicio():
     return render_template("index.html")
-
 
 @app.route("/teste-banco")
 def teste_banco():
@@ -34,7 +142,6 @@ def teste_banco():
     finally:
         conexao.close()
 
-
 # CLIENTES
 @app.route("/api/contas", methods=["GET"])
 def listar_contas_api():
@@ -46,7 +153,6 @@ def listar_contas_api():
         return {"contas": [dict(c) for c in contas]}
     finally:
         conexao.close()
-
 
 @app.route("/api/contas", methods=["POST"])
 def cadastrar_conta_api():
@@ -66,7 +172,6 @@ def cadastrar_conta_api():
     finally:
         conexao.close()
 
-
 # PROFISSIONAIS
 @app.route("/api/profissionais", methods=["GET"])
 def listar_profissionais_api():
@@ -80,7 +185,6 @@ def listar_profissionais_api():
         return {"profissionais": [dict(p) for p in profissionais]}
     finally:
         conexao.close()
-
 
 @app.route("/api/profissionais", methods=["POST"])
 def cadastrar_profissional_api():
@@ -152,7 +256,6 @@ def cadastrar_profissional_api():
     finally:
         conexao.close()
 
-
 # SERVIÇOS
 @app.route("/api/servicos", methods=["GET"])
 def listar_servicos_api():
@@ -164,7 +267,6 @@ def listar_servicos_api():
         return {"servicos": [dict(s) for s in servicos]}
     finally:
         conexao.close()
-
 
 @app.route("/api/servicos", methods=["POST"])
 def cadastrar_servico_api():
@@ -201,7 +303,6 @@ def cadastrar_servico_api():
     finally:
         conexao.close()
 
-
 # TAREFAS
 @app.route("/api/tarefas", methods=["GET"])
 def listar_tarefas_api():
@@ -230,7 +331,6 @@ def listar_tarefas_api():
         return {"tarefas": [dict(t) for t in tarefas]}
     finally:
         conexao.close()
-
 
 @app.route("/api/tarefas", methods=["POST"])
 def cadastrar_tarefa_api():
@@ -463,4 +563,20 @@ def excluir_tarefa_api(tarefa_id):
         conexao.close()
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    preparar_tabela_alertas()
+
+    agendador = BackgroundScheduler()
+    agendador.add_job(
+        verificar_tarefas_vencidas,
+        "interval",
+        minutes=1,
+        id="verificar_prazos",
+        max_instances=1,
+        coalesce=True,
+    )
+    agendador.start()
+
+    try:
+        app.run(debug=True, use_reloader=False)
+    finally:
+        agendador.shutdown(wait=False)

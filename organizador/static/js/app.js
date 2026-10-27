@@ -237,7 +237,7 @@ function telaPainel() {
       </a>
       <div class="card">
         <span class="suave">Entregas pendentes</span>
-        <div class="numero">${pend}</div>
+        <div class="numero amarelo">${pend}</div>
       </div>
       <div class="card">
         <span class="suave">Concluídas</span>
@@ -250,9 +250,7 @@ function telaPainel() {
     </div>
 
     <h2>Tarefas por conta</h2>
-    <div class="faixa">
-      Tarefas atrasadas geram um alerta por e-mail para Gabrielle.
-      O envio será feito pelo sistema na versão com backend.
+    
     </div>
 
     <div class="filtros">${chipsStatus()}</div>
