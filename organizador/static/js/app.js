@@ -264,26 +264,39 @@ function telaPainel() {
 
 async function telaProfissionais() {
   const profissionais = await buscarProfissionais();
-
+  
   const respostaServicos = await fetch("/api/servicos");
   if (!respostaServicos.ok) {
     throw new Error("Não foi possível carregar os serviços.");
   }
   const dadosServicos = await respostaServicos.json();
   const servicos = dadosServicos.servicos;
+  const servicosAtivos = servicos.filter((s) => s.ativo !== 0);
+  
+  const cardsProfissionais = profissionais
+    .filter((p) => p.ativo !== 0)
+    .map((p) => `
+      <div class="card conta">
+        <h3>${p.nome}</h3>
+        <p class="suave">${p.area || "Serviço não informado"}</p>
+        <button class="btn perigo pequeno"
+          data-desativar-profissional="${p.id}">
+          Excluir
+        </button>
+      </div>
+    `).join("");
 
-  const cardsProfissionais = profissionais.map((p) => `
-    <div class="card conta">
-      <h3>${p.nome}</h3>
-      <p class="suave">${p.area || "Serviço não informado"}</p>
-    </div>
-  `).join("");
-
-  const cardsServicos = servicos.map((s) => `
-    <div class="card conta">
-      <h3>${s.nome}</h3>
-    </div>
-  `).join("");
+  const cardsServicos = servicos
+    .filter((s) => s.ativo !== 0)
+    .map((s) => `
+      <div class="card conta">
+        <h3>${s.nome}</h3>
+        <button class="btn perigo pequeno"
+          data-desativar-servico="${s.id}">
+          Excluir
+        </button>
+      </div>
+    `).join("");
 
   return `
     <div class="topo">
@@ -322,17 +335,29 @@ async function telaProfissionais() {
 
  // ===== Tela 2: Contas =====
 function telaContas(listaContas = contas) {
-  const cards = listaContas.map((c) => {
-    return `<div class="card conta">
-      <h3>${c.nome}</h3>
-      <a class="btn sec pequeno" href="#/conta/${c.id}">Abrir conta</a>
-    </div>`;
-  }).join("");
+  const contasAtivas = listaContas.filter(
+  (c) => c.ativo !== 0
+);
+
+const cards = contasAtivas.map((c) => `
+  <div class="card conta">
+    <h3>${c.nome}</h3>
+    <div class="acoes">
+      <a class="btn sec pequeno" href="#/conta/${c.id}">
+        Abrir conta
+      </a>
+      <button class="btn perigo pequeno"
+        data-desativar-conta="${c.id}">
+        Excluir
+      </button>
+    </div>
+  </div>
+`).join("");
 
   return `<div class="topo">
     <div>
       <h1>Contas</h1>
-      <p class="suave">${listaContas.length} clientes cadastrados</p>
+      <p class="suave">${contasAtivas.length} clientes cadastrados</p>
     </div>
   </div>
 
@@ -891,6 +916,64 @@ if (so) {
     avisar("O arquivamento ainda não está conectado ao banco.");
     return;
   }
+const botoesDesativar = [
+  {
+    seletor: "[data-desativar-conta]",
+    atributo: "desativarConta",
+    tipo: "conta",
+    rota: "contas",
+    nome: "conta"
+  },
+  {
+    seletor: "[data-desativar-profissional]",
+    atributo: "desativarProfissional",
+    tipo: "profissional",
+    rota: "profissionais",
+    nome: "profissional"
+  },
+  {
+    seletor: "[data-desativar-servico]",
+    atributo: "desativarServico",
+    tipo: "serviço",
+    rota: "servicos",
+    nome: "serviço"
+  }
+];
+
+for (const item of botoesDesativar) {
+  const botao = e.target.closest(item.seletor);
+
+  if (!botao) continue;
+
+  const id = Number(botao.dataset[item.atributo]);
+
+  if (!window.confirm(
+    `Deseja realmente desativar este cadastro de ${item.nome}?`
+  )) return;
+
+  botao.disabled = true;
+
+  try {
+    const resposta = await fetch(
+      `/api/${item.rota}/${id}/desativar`,
+      { method: "PATCH" }
+    );
+
+    const dados = await resposta.json();
+
+    if (!resposta.ok) {
+      throw new Error(dados.erro || "Não foi possível desativar.");
+    }
+
+    await renderizar();
+    avisar("Cadastro desativado com sucesso!");
+  } catch (erro) {
+    avisar(erro.message || "Erro ao desativar cadastro.");
+    botao.disabled = false;
+  }
+
+  return;
+}
 
 const botaoExcluir = e.target.closest("[data-excluir]");
 

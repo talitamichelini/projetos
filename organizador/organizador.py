@@ -122,6 +122,34 @@ def preparar_tabela_alertas():
     finally:
         conexao.close()
 
+def preparar_cadastros_ativos():
+    conexao = conectar_banco()
+    try:
+        tabelas = {
+            "contas": "ativo",
+            "profissionais": "ativo",
+             "servicos": "ativo",
+        }
+
+        for tabela, coluna in tabelas.items():
+            colunas_existentes = conexao.execute(
+                f"PRAGMA table_info({tabela})"
+            ).fetchall()
+
+            nomes_colunas = [coluna_db["name"] for coluna_db in colunas_existentes]
+
+            if coluna not in nomes_colunas:
+                conexao.execute(
+                    f"""
+                    ALTER TABLE {tabela}
+                    ADD COLUMN {coluna} INTEGER NOT NULL DEFAULT 1
+                    """
+                )
+
+        conexao.commit()
+    finally:
+        conexao.close()
+
 def texto(dados, campo):
     valor = dados.get(campo, "")
     return valor.strip() if isinstance(valor, str) else ""
@@ -148,7 +176,7 @@ def listar_contas_api():
     conexao = conectar_banco()
     try:
         contas = conexao.execute(
-            "SELECT id, nome FROM contas ORDER BY nome"
+            "SELECT id, nome, ativo FROM contas ORDER BY nome"
         ).fetchall()
         return {"contas": [dict(c) for c in contas]}
     finally:
@@ -178,9 +206,7 @@ def listar_profissionais_api():
     conexao = conectar_banco()
     try:
         profissionais = conexao.execute("""
-            SELECT id, nome, area
-            FROM profissionais
-            ORDER BY nome
+            SELECT id, nome, area, ativo FROM profissionais ORDER BY nome
         """).fetchall()
         return {"profissionais": [dict(p) for p in profissionais]}
     finally:
@@ -262,7 +288,7 @@ def listar_servicos_api():
     conexao = conectar_banco()
     try:
         servicos = conexao.execute("""
-            SELECT id, nome FROM servicos ORDER BY nome
+            SELECT id, nome, ativo FROM servicos ORDER BY nome
         """).fetchall()
         return {"servicos": [dict(s) for s in servicos]}
     finally:
@@ -300,6 +326,35 @@ def cadastrar_servico_api():
             "nome": nome,
             "mensagem": "Serviço cadastrado com sucesso!"
         }, 201
+    finally:
+        conexao.close()
+
+# DESATIVAR CADASTROS
+@app.route("/api/contas/<int:conta_id>/desativar", methods=["PATCH"])
+def desativar_conta_api(conta_id):
+    return alterar_ativo("contas", conta_id, 0)
+
+@app.route("/api/profissionais/<int:profissional_id>/desativar", methods=["PATCH"])
+def desativar_profissional_api(profissional_id):
+    return alterar_ativo("profissionais", profissional_id, 0)
+
+@app.route("/api/servicos/<int:servico_id>/desativar", methods=["PATCH"])
+def desativar_servico_api(servico_id):
+    return alterar_ativo("servicos", servico_id, 0)
+
+def alterar_ativo(tabela, registro_id, ativo):
+    conexao = conectar_banco()
+    try:
+        cursor = conexao.execute(
+            f"UPDATE {tabela} SET ativo = ? WHERE id = ?",
+            (ativo, registro_id)
+        )
+
+        if cursor.rowcount == 0:
+            return {"erro": "Cadastro não encontrado."}, 404
+
+        conexao.commit()
+        return {"mensagem": "Cadastro desativado com sucesso!"}, 200
     finally:
         conexao.close()
 
@@ -564,6 +619,8 @@ def excluir_tarefa_api(tarefa_id):
 
 if __name__ == "__main__":
     preparar_tabela_alertas()
+    preparar_cadastros_ativos()
+    app.run(debug=True)
 
     agendador = BackgroundScheduler()
     agendador.add_job(
