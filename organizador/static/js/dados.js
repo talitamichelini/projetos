@@ -1,5 +1,3 @@
-// DADOS FICTÍCIOS — só para demonstração visual.
-// Depois, o Flask/SQLite fornecerá estas mesmas informações.
 // Os prazos são calculados a partir de "agora" para o exemplo sempre mostrar atrasos.
 
 const agora = new Date();

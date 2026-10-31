@@ -1,0 +1,215 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minhas tarefas</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 32px 20px;
+            background: #f4f6f4;
+            color: #26352d;
+            font-family: Arial, sans-serif;
+        }
+
+        main {
+            max-width: 850px;
+            margin: auto;
+        }
+
+        header {
+            margin-bottom: 28px;
+        }
+
+        h1 {
+            margin-bottom: 8px;
+            color: #0F5132;
+        }
+
+        .subtitulo {
+            color: #68756d;
+        }
+
+        .tarefa {
+            background: white;
+            border: 1px solid #e2e8e3;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 14px;
+        }
+
+        .tarefa h2 {
+            font-size: 18px;
+            margin: 0 0 12px;
+        }
+
+        .detalhe {
+            color: #68756d;
+            font-size: 14px;
+            margin: 6px 0;
+        }
+
+        label {
+            display: block;
+            margin-top: 16px;
+            margin-bottom: 6px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        select, textarea {
+            width: 100%;
+            padding: 11px;
+            border: 1px solid #d5ded7;
+            border-radius: 8px;
+            font: inherit;
+        }
+
+        textarea {
+            min-height: 75px;
+            resize: vertical;
+        }
+
+        button {
+            margin-top: 14px;
+            padding: 11px 18px;
+            border: 0;
+            border-radius: 8px;
+            background: #0F5132;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .vazio {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            color: #68756d;
+        }
+    </style>
+</head>
+
+<body>
+<main>
+    <header>
+        <h1>Olá, {{ nome }}!</h1>
+        <p class="subtitulo">Acompanhe suas entregas e atualize suas tarefas.</p>
+    </header>
+
+    <section id="lista-tarefas">
+        Carregando tarefas...
+    </section>
+</main>
+
+<script>
+    const token = {{ token | tojson }};
+
+    async function carregarTarefas() {
+        const resposta = await fetch(
+            `/api/profissional/${token}/tarefas`
+        );
+
+        const dados = await resposta.json();
+        const lista = document.getElementById("lista-tarefas");
+
+        if (!resposta.ok) {
+            lista.textContent = dados.erro || "Não foi possível carregar as tarefas.";
+            return;
+        }
+
+        if (!dados.tarefas.length) {
+            lista.innerHTML = '<div class="vazio">Você não possui tarefas cadastradas.</div>';
+            return;
+        }
+
+        lista.innerHTML = dados.tarefas.map(tarefa => `
+            <article class="tarefa">
+                <h2>${escapar(tarefa.titulo)}</h2>
+
+                <p class="detalhe">
+                    Cliente: ${escapar(tarefa.conta_nome)}
+                </p>
+
+                <p class="detalhe">
+                    Serviço: ${escapar(tarefa.servico_nome || "—")}
+                </p>
+
+                <p class="detalhe">
+                    Prazo: ${formatarPrazo(tarefa.prazo)}
+                </p>
+
+                <label for="status-${tarefa.id}">Status</label>
+                <select id="status-${tarefa.id}">
+                    <option value="andamento"
+                        ${tarefa.status === "andamento" ? "selected" : ""}>
+                        Em andamento
+                    </option>
+                    <option value="concluido"
+                        ${tarefa.status === "concluido" ? "selected" : ""}>
+                        Concluído
+                    </option>
+                </select>
+
+                <label for="obs-${tarefa.id}">Observação</label>
+                <textarea id="obs-${tarefa.id}">${escapar(tarefa.observacao || "")}</textarea>
+
+                <button onclick="salvarTarefa(${tarefa.id})">
+                    Salvar atualização
+                </button>
+            </article>
+        `).join("");
+    }
+
+    async function salvarTarefa(id) {
+        const status = document.getElementById(`status-${id}`).value;
+        const observacao = document.getElementById(`obs-${id}`).value;
+
+        const resposta = await fetch(
+            `/api/profissional/${token}/tarefas/${id}`,
+            {
+                method: "PATCH",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({status, observacao})
+            }
+        );
+
+        const dados = await resposta.json();
+
+        if (!resposta.ok) {
+            alert(dados.erro || "Não foi possível salvar.");
+            return;
+        }
+
+        alert("Atualização salva com sucesso!");
+        carregarTarefas();
+    }
+
+    function escapar(valor) {
+        return String(valor ?? "").replace(/[&<>"']/g, caractere => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+        })[caractere]);
+    }
+
+    function formatarPrazo(valor) {
+        const data = new Date(valor);
+        return Number.isNaN(data.getTime())
+            ? valor
+            : data.toLocaleString("pt-BR");
+    }
+
+    carregarTarefas();
+</script>
+</body>
+</html>

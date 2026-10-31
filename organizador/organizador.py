@@ -2,10 +2,14 @@
 import os
 import sqlite3
 import smtplib
+import secrets
 from email.message import EmailMessage
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, send_file
-from datetime import datetime
+from flask import (
+    Flask, render_template, request, send_file,
+    redirect, session
+)
+from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from io import BytesIO
 from reportlab.lib import colors
@@ -77,8 +81,15 @@ def gerar_pdf_relatorio(nome_mes, tarefas):
     tabela = Table(
         linhas,
         repeatRows=1,
-        colWidths=[3*cm, 4*cm, 3*cm, 3*cm, 2.5*cm, 2.5*cm, 5*cm]
-    )
+        colWidths=[2.5*cm, # Conta
+                    3.5*cm, # Entrega
+                    2.8*cm, # Serviço
+                    2.7*cm, # Profissional
+                    3.4*cm, # Prazo
+                    2.7*cm, # Status final
+                    4.4*cm  # Observações
+                    ]
+     )
 
     tabela.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F5132")),
@@ -98,7 +109,46 @@ def gerar_pdf_relatorio(nome_mes, tarefas):
 load_dotenv()
 
 app = Flask(__name__)
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.getenv("COOKIE_SECURE", "false").lower() == "true",
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=8)
+)
+app.secret_key = os.getenv("SECRET_KEY")
 
+@app.route("/admin/<token>")
+def acesso_admin(token):
+    token_correto = os.getenv("ADMIN_TOKEN", "")
+
+    if not token_correto or not secrets.compare_digest(
+        token, token_correto
+    ):
+        return "Acesso não autorizado.", 403
+
+    session["admin_autorizado"] = True
+    session.permanent = True
+    
+    return redirect("/")
+
+@app.before_request
+def proteger_painel():
+    endpoints_publicos = {
+        "acesso_admin",
+        "acesso_profissional",
+        "listar_tarefas_profissional",
+        "atualizar_tarefa_profissional",
+    }
+
+    if request.endpoint in endpoints_publicos:
+        return None
+
+    if request.path.startswith("/static/"):
+        return None
+
+    if not session.get("admin_autorizado"):
+        return "Acesso não autorizado.", 403
+    
 def enviar_email(destinatario, assunto, mensagem):
     email_remetente = os.getenv("EMAIL_REMETENTE")
     senha_app = os.getenv("EMAIL_SENHA_APP")
@@ -255,6 +305,41 @@ def preparar_cadastros_ativos():
     finally:
         conexao.close()
 
+def preparar_tokens_profissionais():
+    conexao = conectar_banco()
+
+    try:
+        colunas = conexao.execute(
+            "PRAGMA table_info(profissionais)"
+        ).fetchall()
+
+        nomes = [coluna["name"] for coluna in colunas]
+
+        if "access_token" not in nomes:
+            conexao.execute("""
+                ALTER TABLE profissionais
+                ADD COLUMN access_token TEXT
+            """)
+
+        profissionais = conexao.execute("""
+            SELECT id FROM profissionais
+            WHERE access_token IS NULL OR access_token = ''
+        """).fetchall()
+
+        for profissional in profissionais:
+            token = secrets.token_urlsafe(32)
+
+            conexao.execute("""
+                UPDATE profissionais
+                SET access_token = ?
+                WHERE id = ?
+            """, (token, profissional["id"]))
+
+        conexao.commit()
+
+    finally:
+        conexao.close()
+
 def texto(dados, campo):
     valor = dados.get(campo, "")
     return valor.strip() if isinstance(valor, str) else ""
@@ -262,6 +347,116 @@ def texto(dados, campo):
 @app.route("/")
 def inicio():
     return render_template("index.html")
+
+@app.route("/profissional/<token>")
+def acesso_profissional(token):
+    conexao = conectar_banco()
+    try:
+        profissional = conexao.execute("""
+            SELECT id, nome
+            FROM profissionais
+            WHERE access_token = ?
+              AND ativo = 1
+        """, (token,)).fetchone()
+
+        if not profissional:
+            return "Link inválido ou acesso desativado.", 404
+
+        return render_template(
+    "profissional.html",
+    token=token,
+    nome=profissional["nome"]
+)
+    finally:
+        conexao.close()
+
+@app.route("/api/profissional/<token>/tarefas", methods=["GET"])
+def listar_tarefas_profissional(token):
+    conexao = conectar_banco()
+
+    try:
+        profissional = conexao.execute("""
+            SELECT id
+            FROM profissionais
+            WHERE access_token = ? AND ativo = 1
+        """, (token,)).fetchone()
+
+        if not profissional:
+            return {"erro": "Acesso inválido ou desativado."}, 404
+
+        tarefas = conexao.execute("""
+            SELECT
+                t.id,
+                t.titulo,
+                t.prazo,
+                t.status,
+                t.observacao,
+                c.nome AS conta_nome,
+                s.nome AS servico_nome
+            FROM tarefas t
+            JOIN contas c ON c.id = t.conta_id
+            LEFT JOIN servicos s ON s.id = t.servico_id
+            WHERE t.profissional_id = ?
+            ORDER BY t.prazo
+        """, (profissional["id"],)).fetchall()
+
+        return {"tarefas": [dict(t) for t in tarefas]}
+
+    finally:
+        conexao.close()
+
+@app.route(
+    "/api/profissional/<token>/tarefas/<int:tarefa_id>",
+    methods=["PATCH"]
+)
+def atualizar_tarefa_profissional(token, tarefa_id):
+    dados = request.get_json(silent=True)
+
+    if not isinstance(dados, dict):
+        return {"erro": "Dados inválidos."}, 400
+
+    status = texto(dados, "status").lower()
+    observacao = dados.get("observacao")
+
+    if status not in {"andamento", "concluido"}:
+        return {"erro": "Status inválido."}, 400
+
+    if not isinstance(observacao, str):
+        return {"erro": "Observação inválida."}, 400
+
+    conexao = conectar_banco()
+
+    try:
+        profissional = conexao.execute("""
+            SELECT id
+            FROM profissionais
+            WHERE access_token = ? AND ativo = 1
+        """, (token,)).fetchone()
+
+        if not profissional:
+            return {"erro": "Acesso inválido ou desativado."}, 404
+
+        tarefa = conexao.execute("""
+            SELECT id
+            FROM tarefas
+            WHERE id = ? AND profissional_id = ?
+        """, (tarefa_id, profissional["id"])).fetchone()
+
+        if not tarefa:
+            return {"erro": "Tarefa não encontrada."}, 404
+
+        conexao.execute("""
+            UPDATE tarefas
+            SET status = ?, observacao = ?
+            WHERE id = ? AND profissional_id = ?
+        """, (status, observacao, tarefa_id, profissional["id"]))
+
+        conexao.commit()
+
+        return {"mensagem": "Tarefa atualizada com sucesso!"}
+
+    finally:
+        conexao.close()
 
 @app.route("/teste-banco")
 def teste_banco():
@@ -314,6 +509,34 @@ def listar_profissionais_api():
             SELECT id, nome, area, ativo FROM profissionais ORDER BY nome
         """).fetchall()
         return {"profissionais": [dict(p) for p in profissionais]}
+    finally:
+        conexao.close()
+
+@app.route("/api/profissionais/links", methods=["GET"])
+def listar_links_profissionais():
+    conexao = conectar_banco()
+
+    try:
+        profissionais = conexao.execute("""
+            SELECT id, nome, access_token
+            FROM profissionais
+            WHERE ativo = 1
+            ORDER BY nome
+        """).fetchall()
+
+        links = []
+
+        for profissional in profissionais:
+            links.append({
+                "id": profissional["id"],
+                "nome": profissional["nome"],
+                "link": request.host_url.rstrip("/")
+                        + "/profissional/"
+                        + profissional["access_token"]
+            })
+
+        return {"profissionais": links}
+
     finally:
         conexao.close()
 
@@ -905,6 +1128,8 @@ if __name__ == "__main__":
     preparar_tabela_alertas()
     preparar_cadastros_ativos()
     preparar_tabela_meses()
+    preparar_tokens_profissionais()
+
     app.run(debug=True)
 
     agendador = BackgroundScheduler()

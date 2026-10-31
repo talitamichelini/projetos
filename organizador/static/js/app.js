@@ -2,6 +2,33 @@
 // ===== Funções auxiliares =====
 const $app = document.getElementById("app");
 
+document.getElementById("nav").addEventListener("click", async (e) => {
+  if (e.target.id !== "sair-admin") return;
+
+  const confirmou = confirm("Deseja realmente sair do painel?");
+
+  if (!confirmou) return;
+
+  try {
+    const resposta = await fetch("/admin/sair", {
+      method: "POST"
+    });
+
+    if (!resposta.ok) {
+      throw new Error("Não foi possível encerrar a sessão.");
+    }
+
+    document.body.innerHTML = `
+      <main style="padding:40px; text-align:center">
+        <h1>Sessão encerrada</h1>
+        <p>Para acessar novamente, utilize seu link administrativo.</p>
+      </main>
+    `;
+  } catch (erro) {
+    avisar(erro.message);
+  }
+});
+
 let contas = [];
 let profissionais = [];
 let tarefas = [];
@@ -233,7 +260,7 @@ function telaPainel() {
     <div class="resumo">
       <a class="card" href="#/contas">
         <span class="suave">Contas</span>
-        <div class="numero">${contas.length}</div>
+        <div class="numero">${contas.filter(c => c.ativo !== 0).length}</div>
       </a>
       <div class="card">
         <span class="suave">Entregas pendentes</span>
@@ -262,29 +289,62 @@ function telaPainel() {
   `;
 }
 
+
 async function telaProfissionais() {
   const profissionais = await buscarProfissionais();
-  
+
+  const respostaLinks = await fetch("/api/profissionais/links");
+  if (!respostaLinks.ok) {
+    throw new Error("Não foi possível carregar os links dos profissionais.");
+  }
+  const dadosLinks = await respostaLinks.json();
+  const links = dadosLinks.profissionais;
+
   const respostaServicos = await fetch("/api/servicos");
   if (!respostaServicos.ok) {
     throw new Error("Não foi possível carregar os serviços.");
   }
+
   const dadosServicos = await respostaServicos.json();
   const servicos = dadosServicos.servicos;
-  const servicosAtivos = servicos.filter((s) => s.ativo !== 0);
-  
+
   const cardsProfissionais = profissionais
     .filter((p) => p.ativo !== 0)
-    .map((p) => `
-      <div class="card conta">
-        <h3>${p.nome}</h3>
-        <p class="suave">${p.area || "Serviço não informado"}</p>
-        <button class="btn perigo pequeno"
-          data-desativar-profissional="${p.id}">
-          Excluir
-        </button>
-      </div>
-    `).join("");
+    .map((p) => {
+      const acesso = links.find((l) => l.id === p.id);
+
+      return `
+        <div class="card conta">
+          <h3>${p.nome}</h3>
+          <p class="suave">${p.area || "Serviço não informado"}</p>
+
+          ${acesso ? `
+            <div class="campo-link">
+              <label>Link de acesso individual</label>
+              <input
+                type="text"
+                value="${acesso.link}"
+                readonly
+                onclick="this.select()"
+              >
+              <button
+                class="btn sec pequeno"
+                type="button"
+                onclick="copiarLinkProfissional(this)"
+                data-link="${acesso.link}"
+              >
+                Copiar link
+              </button>
+            </div>
+          ` : ""}
+
+          <button class="btn perigo pequeno"
+            data-desativar-profissional="${p.id}">
+            Excluir
+          </button>
+        </div>
+      `;
+    }).join("");
 
   const cardsServicos = servicos
     .filter((s) => s.ativo !== 0)
@@ -308,17 +368,13 @@ async function telaProfissionais() {
 
     <form class="card painel" id="form-profissional">
       <label for="nome-profissional">Nome do profissional</label>
-      <input id="nome-profissional"
-        placeholder="Ex.: Ana Souza">
+      <input id="nome-profissional" placeholder="Ex.: Ana Souza">
 
       <label for="area-profissional">Serviço</label>
-      <input id="area-profissional"
-        placeholder="Ex.: Design, Mídia paga">
+      <input id="area-profissional" placeholder="Ex.: Design, Mídia paga">
 
       <button class="btn" type="submit">Salvar cadastro</button>
-      <p class="suave">
-        Preencha um campo ou os dois.
-      </p>
+      <p class="suave">Preencha um campo ou os dois.</p>
     </form>
 
     <h2>Profissionais cadastrados</h2>
@@ -331,6 +387,17 @@ async function telaProfissionais() {
       ${cardsServicos || '<p class="vazio">Nenhum serviço cadastrado.</p>'}
     </div>
   `;
+}
+
+async function copiarLinkProfissional(botao) {
+  const link = botao.dataset.link;
+
+  try {
+    await navigator.clipboard.writeText(link);
+    avisar("Link copiado com sucesso!");
+  } catch (erro) {
+    avisar("Não foi possível copiar o link.");
+  }
 }
 
  // ===== Tela 2: Contas =====
@@ -460,9 +527,12 @@ function telaTarefa(id) {
 
 // ===== Cadastro / edição de tarefa =====
 async function telaForm(params) {
-  const contas = await buscarContas();
-  const profissionais = await buscarProfissionais();
-  
+  const contas = (await buscarContas())
+  .filter((c) => Number(c.ativo) !== 0);
+
+const profissionais = (await buscarProfissionais())
+  .filter((p) => Number(p.ativo) !== 0);
+
   const idEdicao = Number(params.get("editar")) || null;
   const tarefaEdicao = idEdicao
     ? tarefas.find((t) => t.id === idEdicao)
@@ -477,7 +547,8 @@ async function telaForm(params) {
     throw new Error("Não foi possível carregar os serviços.");
   }
   const dadosServicos = await respostaServicos.json();
-  const servicos = dadosServicos.servicos;
+  const servicos = dadosServicos.servicos
+  .filter((s) => Number(s.ativo) !== 0);
 
   const opc = (lista, sel, txt) =>
     lista.map((i) =>
@@ -551,7 +622,9 @@ const MENU_ADMIN = [
 function faixaPerfil() {
   const ops =
     `<option value="0">Gabrielle (administração)</option>` +
-    profissionais.map(
+    profissionais
+    .filter((p) => Number(p.ativo) !== 0)
+    .map(
       (p) => `<option value="${p.id}" ${p.id === perfil ? "selected" : ""}>${p.nome} (profissional)</option>`
     ).join("");
 
@@ -674,10 +747,13 @@ async function renderizar() {
     : [["#/", "minhas", "Minhas tarefas"]];
 
   document.getElementById("nav").innerHTML =
-    `<div class="marca">Acompanhamento</div>` +
-    menu.map(
-      ([h, r, txt]) => `<a href="${h}" data-rota="${r}" class="${r === ativo ? "ativo" : ""}">${txt}</a>`
-    ).join("");
+  `<div class="marca">Acompanhamento</div>` +
+  menu.map(
+    ([h, r, txt]) => `<a href="${h}" data-rota="${r}" class="${r === ativo ? "ativo" : ""}">${txt}</a>`
+  ).join("") +
+  (ehAdmin()
+    ? `<button class="btn sec pequeno" id="sair-admin">Sair</button>`
+    : "");
 
   $app.innerHTML = faixaPerfil() + html;
   window.scrollTo(0, 0);
