@@ -4,9 +4,96 @@ import sqlite3
 import smtplib
 from email.message import EmailMessage
 from dotenv import load_dotenv
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, send_file
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
+from io import BytesIO
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Table,
+    TableStyle,
+    Paragraph,
+    Spacer
+)
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import cm
+
+from xml.sax.saxutils import escape
+
+def gerar_pdf_relatorio(nome_mes, tarefas):
+    arquivo = BytesIO()
+
+    documento = SimpleDocTemplate(
+        arquivo,
+        pagesize=landscape(A4),
+        rightMargin=1 * cm,
+        leftMargin=1 * cm,
+        topMargin=1 * cm,
+        bottomMargin=1 * cm
+    )
+
+    estilos = getSampleStyleSheet()
+    elementos = []
+
+    elementos.append(
+        Paragraph(f"Relatório mensal — {escape(nome_mes)}", estilos["Title"])
+    )
+    elementos.append(Spacer(1, 16))
+
+    cabecalho = [
+        "Conta", "Entrega", "Serviço", "Profissional",
+        "Prazo", "Status final", "Observações"
+    ]
+
+    linhas = [cabecalho]
+
+    for tarefa in tarefas:
+        prazo = datetime.fromisoformat(
+            str(tarefa["prazo"]).replace("Z", "+00:00")
+        )
+
+        if prazo.tzinfo:
+            prazo = prazo.replace(tzinfo=None)
+
+        if tarefa["status"] == "concluido":
+            status = "Concluído"
+        elif prazo < datetime.now():
+            status = "Atrasado"
+        else:
+            status = "Em andamento"
+
+        linhas.append([
+            Paragraph(escape(str(tarefa["conta_nome"] or "")), estilos["BodyText"]),
+            Paragraph(escape(str(tarefa["titulo"] or "")), estilos["BodyText"]),
+            Paragraph(escape(str(tarefa["servico_nome"] or "—")), estilos["BodyText"]),
+            Paragraph(escape(str(tarefa["profissional_nome"] or "")), estilos["BodyText"]),
+            prazo.strftime("%d/%m/%Y %H:%M"),
+            status,
+            Paragraph(escape(str(tarefa["observacao"] or "—")), estilos["BodyText"])
+        ])
+
+    tabela = Table(
+        linhas,
+        repeatRows=1,
+        colWidths=[3*cm, 4*cm, 3*cm, 3*cm, 2.5*cm, 2.5*cm, 5*cm]
+    )
+
+    tabela.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F5132")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("PADDING", (0, 0), (-1, -1), 6),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F2F5F3")])
+    ]))
+
+    elementos.append(tabela)
+    documento.build(elementos)
+
+    arquivo.seek(0)
+    return arquivo
 
 load_dotenv()
 
@@ -116,6 +203,24 @@ def preparar_tabela_alertas():
             CREATE TABLE IF NOT EXISTS alertas_enviados (
                 tarefa_id INTEGER PRIMARY KEY,
                 enviado_em TEXT NOT NULL
+            )
+        """)
+        conexao.commit()
+    finally:
+        conexao.close()
+
+def preparar_tabela_meses():
+    conexao = conectar_banco()
+    try:
+        conexao.execute("""
+            CREATE TABLE IF NOT EXISTS meses_arquivados (
+                mes_referencia TEXT PRIMARY KEY,
+                nome_mes TEXT NOT NULL,
+                total_tarefas INTEGER NOT NULL,
+                concluidas INTEGER NOT NULL,
+                andamento INTEGER NOT NULL,
+                atrasadas INTEGER NOT NULL,
+                fechado_em TEXT NOT NULL
             )
         """)
         conexao.commit()
@@ -387,6 +492,185 @@ def listar_tarefas_api():
     finally:
         conexao.close()
 
+@app.route("/api/meses", methods=["GET"])
+def listar_meses_api():
+    conexao = conectar_banco()
+    try:
+        meses = conexao.execute("""
+            SELECT
+                mes_referencia,
+                nome_mes,
+                total_tarefas,
+                concluidas,
+                andamento,
+                atrasadas,
+                fechado_em
+            FROM meses_arquivados
+            ORDER BY mes_referencia DESC
+        """).fetchall()
+
+        return {
+            "meses": [dict(m) for m in meses]
+        }
+
+    finally:
+        conexao.close()
+
+@app.route("/api/relatorio-mensal", methods=["GET"])
+def baixar_relatorio_mensal():
+    conexao = conectar_banco()
+
+    try:
+        tarefas = conexao.execute("""
+            SELECT
+                t.id,
+                c.nome AS conta_nome,
+                t.titulo,
+                s.nome AS servico_nome,
+                p.nome AS profissional_nome,
+                t.prazo,
+                t.status,
+                t.observacao
+            FROM tarefas t
+            LEFT JOIN contas c ON c.id = t.conta_id
+            LEFT JOIN servicos s ON s.id = t.servico_id
+            LEFT JOIN profissionais p ON p.id = t.profissional_id
+            ORDER BY t.prazo ASC
+        """).fetchall()
+
+        tarefas = [dict(t) for t in tarefas]
+
+    finally:
+        conexao.close()
+
+    agora = datetime.now()
+
+    nomes_meses = [
+        "Janeiro", "Fevereiro", "Março", "Abril",
+        "Maio", "Junho", "Julho", "Agosto",
+        "Setembro", "Outubro", "Novembro", "Dezembro"
+    ]
+
+    nome_mes = f"{nomes_meses[agora.month - 1]} de {agora.year}"
+
+    pdf = gerar_pdf_relatorio(nome_mes, tarefas)
+
+    return send_file(
+        pdf,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"relatorio_{agora.strftime('%Y_%m')}.pdf"
+    )
+
+@app.route("/api/fechamento", methods=["POST"])
+def fechar_mes():
+    dados = request.get_json(silent=True) or {}
+
+    if dados.get("confirmar") is not True:
+        return {
+            "erro": "É necessário confirmar o fechamento."
+        }, 400
+
+    conexao = conectar_banco()
+
+    try:
+        conexao.execute("BEGIN IMMEDIATE")
+
+        agora = datetime.now()
+        mes_referencia = agora.strftime("%Y-%m")
+
+        nomes_meses = [
+            "Janeiro", "Fevereiro", "Março", "Abril",
+            "Maio", "Junho", "Julho", "Agosto",
+            "Setembro", "Outubro", "Novembro", "Dezembro"
+        ]
+
+        nome_mes = f"{nomes_meses[agora.month - 1]} de {agora.year}"
+
+        existente = conexao.execute("""
+            SELECT mes_referencia
+            FROM meses_arquivados
+            WHERE mes_referencia = ?
+        """, (mes_referencia,)).fetchone()
+
+        if existente:
+            conexao.rollback()
+            return {"erro": "Este mês já foi fechado."}, 409
+
+        tarefas = conexao.execute("""
+            SELECT prazo, status
+            FROM tarefas
+        """).fetchall()
+
+        total = len(tarefas)
+        concluidas = 0
+        atrasadas = 0
+        andamento = 0
+
+        for tarefa in tarefas:
+            if tarefa["status"] == "concluido":
+                concluidas += 1
+                continue
+
+            prazo = datetime.fromisoformat(
+                str(tarefa["prazo"]).replace("Z", "+00:00")
+            )
+
+            if prazo.tzinfo:
+                prazo = prazo.replace(tzinfo=None)
+
+            if prazo < agora:
+                atrasadas += 1
+            else:
+                andamento += 1
+
+        conexao.execute("""
+            INSERT INTO meses_arquivados (
+                mes_referencia,
+                nome_mes,
+                total_tarefas,
+                concluidas,
+                andamento,
+                atrasadas,
+                fechado_em
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            mes_referencia,
+            nome_mes,
+            total,
+            concluidas,
+            andamento,
+            atrasadas,
+            agora.isoformat()
+        ))
+
+        # Exclui primeiro os alertas relacionados às tarefas.
+        conexao.execute("DELETE FROM alertas_enviados")
+
+        # Depois exclui todas as tarefas operacionais.
+        conexao.execute("DELETE FROM tarefas")
+
+        conexao.commit()
+
+        return {
+            "mensagem": "Mês fechado e tarefas removidas.",
+            "resumo": {
+                "mes": nome_mes,
+                "total": total,
+                "concluidas": concluidas,
+                "andamento": andamento,
+                "atrasadas": atrasadas
+            }
+        }
+
+    except Exception as erro:
+        conexao.rollback()
+        return {"erro": str(erro)}, 500
+
+    finally:
+        conexao.close()
+
 @app.route("/api/tarefas", methods=["POST"])
 def cadastrar_tarefa_api():
     dados = request.get_json(silent=True)
@@ -620,6 +904,7 @@ def excluir_tarefa_api(tarefa_id):
 if __name__ == "__main__":
     preparar_tabela_alertas()
     preparar_cadastros_ativos()
+    preparar_tabela_meses()
     app.run(debug=True)
 
     agendador = BackgroundScheduler()

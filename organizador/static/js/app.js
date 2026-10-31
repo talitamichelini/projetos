@@ -656,20 +656,18 @@ async function renderizar() {
   }
   ativo = "nova";
   } else if (rota === "meses") {
-    html = telaMeses();
-    ativo = "meses";
-  } else if (rota === "mes" && porId(mesesArquivados, id)) {
-    html = telaMes(id);
-    ativo = "meses";
-  } else if (rota === "relatorio" && porId(mesesArquivados, id)) {
-    html = telaRelatorio(id);
-    ativo = "meses";
-  } else if (rota === "fechamento") {
-    html = telaFechamento();
-    ativo = "fechamento";
-  } else {
-    html = telaPainel();
+  try {
+    html = await telaMeses();
+  } catch (erro) {
+    html = `<p class="vazio">Não foi possível carregar os meses arquivados.</p>`;
   }
+  ativo = "meses";
+} else if (rota === "fechamento") {
+  html = telaFechamento();
+  ativo = "fechamento";
+} else {
+  html = telaPainel();
+}
 
   const menu = ehAdmin()
     ? MENU_ADMIN
@@ -804,7 +802,39 @@ if (formProfissional) {
     excluir.onclick = () => avisar(NAO_CONECTADO);
   }
 }
+$app.addEventListener("submit", async (e) => {
+  console.log("FORMULÁRIO DE CONTA ACIONADO");
+  if (e.target.id !== "form-conta") return;
 
+  e.preventDefault();
+
+  const campoNome = e.target.querySelector('[name="nome"]');
+  const nome = campoNome.value.trim();
+
+  if (!nome) return;
+
+  try {
+    const resposta = await fetch("/api/contas", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ nome })
+    });
+
+    const resultado = await resposta.json();
+
+    if (!resposta.ok) {
+      throw new Error(resultado.erro || "Erro ao cadastrar cliente.");
+    }
+
+    avisar("Cliente cadastrado com sucesso!");
+    await renderizar();
+
+  } catch (erro) {
+    avisar(erro.message);
+  }
+});
 // ==
  // ===== Ações conectadas ao backend =====
 $app.addEventListener("click", async (e) => {
@@ -907,15 +937,48 @@ if (so) {
     return;
   }
 
-  if (e.target.closest("[data-pdf]")) {
-    avisar("A geração real do PDF ainda não está conectada.");
-    return;
+  // Baixar relatório em PDF
+if (e.target.closest("#baixar-pdf")) {
+  window.location.href = "/api/relatorio-mensal";
+  return;
+}
+
+// Fechar mês
+if (e.target.closest("#arquivar")) {
+  const confirmou = window.confirm(
+    "Tem certeza de que deseja fechar o mês?\n\n" +
+    "Todas as tarefas cadastradas serão excluídas, inclusive as futuras. " +
+    "Os registros de alertas também serão apagados.\n\n" +
+    "O histórico guardará apenas o resumo mensal. Essa ação não poderá ser desfeita."
+  );
+
+  if (!confirmou) return;
+
+  try {
+    const resposta = await fetch("/api/fechamento", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ confirmar: true })
+    });
+
+    const resultado = await resposta.json();
+
+    if (!resposta.ok) {
+      throw new Error(resultado.erro || "Não foi possível fechar o mês.");
+    }
+
+    avisar("Mês fechado com sucesso!");
+    location.hash = "#/meses";
+
+  } catch (erro) {
+    avisar(erro.message);
   }
 
-  if (e.target.closest("#arquivar")) {
-    avisar("O arquivamento ainda não está conectado ao banco.");
-    return;
-  }
+  return;
+}
+
 const botoesDesativar = [
   {
     seletor: "[data-desativar-conta]",
