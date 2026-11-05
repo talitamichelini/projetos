@@ -133,3 +133,7 @@ td { vertical-align: top; padding: 10px 8px; border-bottom: 1px solid var(--bord
 
 .grupo { font-size: .95rem; margin: 22px 0 8px; }
 .grupo a:hover { text-decoration: underline; }
+
+#filtro-prof-painel {
+  margin-bottom: 16px;
+}

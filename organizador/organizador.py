@@ -128,7 +128,7 @@ def acesso_admin(token):
 
     session["admin_autorizado"] = True
     session.permanent = True
-    
+
     return redirect("/")
 
 @app.before_request
@@ -520,7 +520,7 @@ def listar_links_profissionais():
         profissionais = conexao.execute("""
             SELECT id, nome, access_token
             FROM profissionais
-            WHERE ativo = 1
+            WHERE ativo = 1 AND access_token IS NOT NULL
             ORDER BY nome
         """).fetchall()
 
@@ -579,10 +579,12 @@ def cadastrar_profissional_api():
 
         # Cadastra o profissional, se foi informado
         if nome:
+            access_token = secrets.token_urlsafe(32)
+
             cursor_profissional = conexao.execute("""
-                INSERT INTO profissionais (nome, area, servico)
-                VALUES (?, ?, ?)
-            """, (nome, servico or "", servico or ""))
+                INSERT INTO profissionais (nome, area, servico, access_token)
+                VALUES (?, ?, ?, ?)
+            """, (nome, servico or "", servico or "", access_token))
 
             profissional_id = cursor_profissional.lastrowid
 
@@ -607,18 +609,32 @@ def cadastrar_profissional_api():
         return {
             "erro": "Não foi possível concluir o cadastro. Verifique os dados."
         }, 400
+
     finally:
         conexao.close()
 
-# SERVIÇOS
 @app.route("/api/servicos", methods=["GET"])
 def listar_servicos_api():
     conexao = conectar_banco()
+
     try:
         servicos = conexao.execute("""
-            SELECT id, nome, ativo FROM servicos ORDER BY nome
+            SELECT id, nome, ativo
+            FROM servicos
+            ORDER BY nome
         """).fetchall()
-        return {"servicos": [dict(s) for s in servicos]}
+
+        return {
+            "servicos": [
+                {
+                    "id": servico["id"],
+                    "nome": servico["nome"],
+                    "ativo": servico["ativo"]
+                }
+                for servico in servicos
+            ]
+        }
+
     finally:
         conexao.close()
 

@@ -44,7 +44,49 @@
             padding: 20px;
             margin-bottom: 14px;
         }
+.status-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0;
+    margin-top: 0;
+    background: transparent;
+    color: #26352d;
+    font-size: 14px;
+    border: none;
+}
 
+.trilho {
+    width: 52px;
+    height: 28px;
+    border-radius: 20px;
+    position: relative;
+    transition: background 0.2s;
+}
+
+.status-toggle.andamento .trilho {
+    background: #e9bd45;
+}
+
+.status-toggle.concluido .trilho {
+    background: #198754;
+}
+
+.trilho::before {
+    content: "";
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    top: 3px;
+    left: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.2s;
+}
+
+.status-toggle.concluido .trilho::before {
+    transform: translateX(24px);
+}
         .tarefa h2 {
             font-size: 18px;
             margin: 0 0 12px;
@@ -146,17 +188,17 @@
                     Prazo: ${formatarPrazo(tarefa.prazo)}
                 </p>
 
-                <label for="status-${tarefa.id}">Status</label>
-                <select id="status-${tarefa.id}">
-                    <option value="andamento"
-                        ${tarefa.status === "andamento" ? "selected" : ""}>
-                        Em andamento
-                    </option>
-                    <option value="concluido"
-                        ${tarefa.status === "concluido" ? "selected" : ""}>
-                        Concluído
-                    </option>
-                </select>
+                <label>Status</label>
+
+<button
+    type="button"
+    id="status-${tarefa.id}"
+    class="status-toggle ${tarefa.status}"
+    onclick="alternarStatus(${tarefa.id})"
+>
+    <span class="trilho"></span>
+<span>${tarefa.status === "concluido" ? "Concluído" : "Em andamento"}</span>
+</button>
 
                 <label for="obs-${tarefa.id}">Observação</label>
                 <textarea id="obs-${tarefa.id}">${escapar(tarefa.observacao || "")}</textarea>
@@ -168,8 +210,24 @@
         `).join("");
     }
 
+function alternarStatus(id) {
+    const botao = document.getElementById(`status-${id}`);
+    const concluido = botao.classList.contains("concluido");
+
+    botao.classList.toggle("concluido", !concluido);
+    botao.classList.toggle("andamento", concluido);
+
+    botao.innerHTML = `
+    <span class="trilho"></span>
+    <span>${concluido ? "Em andamento" : "Concluído"}</span>
+`;
+}
+
     async function salvarTarefa(id) {
-        const status = document.getElementById(`status-${id}`).value;
+        const botaoStatus = document.getElementById(`status-${id}`);
+const status = botaoStatus.classList.contains("concluido")
+    ? "concluido"
+    : "andamento";
         const observacao = document.getElementById(`obs-${id}`).value;
 
         const resposta = await fetch(

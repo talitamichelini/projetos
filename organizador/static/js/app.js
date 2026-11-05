@@ -2,33 +2,6 @@
 // ===== Funções auxiliares =====
 const $app = document.getElementById("app");
 
-document.getElementById("nav").addEventListener("click", async (e) => {
-  if (e.target.id !== "sair-admin") return;
-
-  const confirmou = confirm("Deseja realmente sair do painel?");
-
-  if (!confirmou) return;
-
-  try {
-    const resposta = await fetch("/admin/sair", {
-      method: "POST"
-    });
-
-    if (!resposta.ok) {
-      throw new Error("Não foi possível encerrar a sessão.");
-    }
-
-    document.body.innerHTML = `
-      <main style="padding:40px; text-align:center">
-        <h1>Sessão encerrada</h1>
-        <p>Para acessar novamente, utilize seu link administrativo.</p>
-      </main>
-    `;
-  } catch (erro) {
-    avisar(erro.message);
-  }
-});
-
 let contas = [];
 let profissionais = [];
 let tarefas = [];
@@ -216,10 +189,11 @@ function corpoPainel() {
     c,
     ts: tarefas
       .filter(
-        (t) =>
-          t.contaId === c.id &&
-          (filtroStatus === "todas" || statusDe(t) === filtroStatus)
-      )
+  (t) =>
+    t.contaId === c.id &&
+    (!filtroProfPainel || Number(t.profId) === Number(filtroProfPainel)) &&
+    (filtroStatus === "todas" || statusDe(t) === filtroStatus)
+)
       .sort(
         (a, b) =>
           peso[statusDe(a)] - peso[statusDe(b)] ||
@@ -277,6 +251,20 @@ function telaPainel() {
     </div>
 
     <h2>Tarefas por conta</h2>
+
+    <div class="campo-filtro">
+      <label for="filtro-prof-painel">Filtrar por profissional</label>
+      <select id="filtro-prof-painel">
+        <option value="0">Todos os profissionais</option>
+        ${profissionais
+          .filter((p) => Number(p.ativo) !== 0)
+          .map((p) => `
+            <option value="${p.id}" ${Number(filtroProfPainel) === Number(p.id) ? "selected" : ""}>
+              ${p.nome}
+            </option>
+          `).join("")}
+      </select>
+    </div>
     
     </div>
 
@@ -288,7 +276,6 @@ function telaPainel() {
     </p>
   `;
 }
-
 
 async function telaProfissionais() {
   const profissionais = await buscarProfissionais();
@@ -443,6 +430,7 @@ const cards = contasAtivas.map((c) => `
 
 // ===== Tela 3: Detalhes da conta =====
 let filtroProf = 0;
+let filtroProfPainel = 0;
 
 function telaConta(id) {
   const conta = porId(contas, id);
@@ -605,11 +593,7 @@ const profissionais = (await buscarProfissionais())
     </form>`;
 }
 
-// ===== Perfil (apenas para a prévia; NÃO é autenticação real) =====
-let perfil = 0;
-
-const ehAdmin = () => perfil === 0;
-
+// ===== Menu administrativo =====
 const MENU_ADMIN = [
   ["#/", "dashboard", "Painel"],
   ["#/contas", "contas", "Contas"],
@@ -618,60 +602,6 @@ const MENU_ADMIN = [
   ["#/meses", "meses", "Mês anterior"],
   ["#/fechamento", "fechamento", "Fechar mês"]
 ];
-
-function faixaPerfil() {
-  const ops =
-    `<option value="0">Gabrielle (administração)</option>` +
-    profissionais
-    .filter((p) => Number(p.ativo) !== 0)
-    .map(
-      (p) => `<option value="${p.id}" ${p.id === perfil ? "selected" : ""}>${p.nome} (profissional)</option>`
-    ).join("");
-
-  return `<div class="perfil">
-    <label for="perfil">Prévia de acesso:</label>
-    <select id="perfil">${ops}</select>
-  </div>`;
-}
-
-// Tela do profissional: só as próprias tarefas (dados ainda fictícios)
-function telaMinhas() {
-  const p = porId(profissionais, perfil);
-
-  if (!p) {
-    return '<p class="vazio">Profissional não encontrado.</p>';
-  }
-
-  const minhas = tarefas
-    .filter((t) => t.profId === perfil)
-    .sort((a, b) => a.prazo - b.prazo);
-
-  const cards = minhas.map((t) => `<div class="card">
-    <div class="topo" style="margin-bottom:10px">
-      <div>
-        <div class="nome">${t.titulo}</div>
-        <p class="suave">${porId(contas, t.contaId).nome} · Prazo: ${prazoHtml(t)}</p>
-      </div>
-      ${selo(t)}
-    </div>
-    <button class="switch" role="switch" aria-checked="${t.status === "concluido"}" data-toggle="${t.id}">
-      <span class="knob"></span>Concluída
-    </button>
-    <label for="obs${t.id}">Observação</label>
-    <textarea id="obs${t.id}" placeholder="Atualizações, justificativas ou informações relevantes">${t.obs}</textarea>
-    <div class="acoes">
-      <button class="btn sec pequeno" data-salvar-obs="${t.id}">Atualizar observação</button>
-    </div>
-  </div>`).join("");
-
-  return `<div class="topo">
-    <div>
-      <h1>Minhas tarefas</h1>
-      <p class="suave">${p.nome} · ${p.area}</p>
-    </div>
-  </div>
-  <div class="pilha">${cards || '<p class="vazio">Nenhuma tarefa atribuída.</p>'}</div>`;
-}
 
 // ===== Navegação (rotas por #) =====
 
@@ -692,11 +622,7 @@ async function renderizar() {
   let html;
   let ativo = "dashboard";
 
-  if (!ehAdmin()) {
-    html = telaMinhas();
-    ativo = "minhas";
-    
-  } else if (rota === "profissionais") {
+  if (rota === "profissionais") {
     try {
       html = await telaProfissionais();
     } catch (erro) {
@@ -742,20 +668,16 @@ async function renderizar() {
   html = telaPainel();
 }
 
-  const menu = ehAdmin()
-    ? MENU_ADMIN
-    : [["#/", "minhas", "Minhas tarefas"]];
+  const menu = MENU_ADMIN;
 
   document.getElementById("nav").innerHTML =
   `<div class="marca">Acompanhamento</div>` +
   menu.map(
     ([h, r, txt]) => `<a href="${h}" data-rota="${r}" class="${r === ativo ? "ativo" : ""}">${txt}</a>`
-  ).join("") +
-  (ehAdmin()
-    ? `<button class="btn sec pequeno" id="sair-admin">Sair</button>`
-    : "");
+  ).join("");
 
-  $app.innerHTML = faixaPerfil() + html;
+$app.innerHTML = html;
+
   window.scrollTo(0, 0);
 
   const filtros = document.getElementById("filtros");
@@ -768,6 +690,24 @@ async function renderizar() {
     };
   }
   
+  const filtroProfPainel = document.getElementById("filtro-prof-painel");
+
+if (filtroProfPainel) {
+  filtroProfPainel.onchange = (e) => {
+    window.filtroProfPainel = Number(e.target.value);
+    renderizar();
+  };
+}
+
+const seletorProfPainel = document.getElementById("filtro-prof-painel");
+
+if (seletorProfPainel) {
+  seletorProfPainel.onchange = (e) => {
+    filtroProfPainel = Number(e.target.value);
+    renderizar();
+  };
+}
+
 const form = document.getElementById("form");
 
 if (form) {
