@@ -690,20 +690,11 @@ $app.innerHTML = html;
     };
   }
   
-  const filtroProfPainel = document.getElementById("filtro-prof-painel");
-
-if (filtroProfPainel) {
-  filtroProfPainel.onchange = (e) => {
-    window.filtroProfPainel = Number(e.target.value);
-    renderizar();
-  };
-}
-
-const seletorProfPainel = document.getElementById("filtro-prof-painel");
+  const seletorProfPainel = document.getElementById("filtro-prof-painel");
 
 if (seletorProfPainel) {
   seletorProfPainel.onchange = (e) => {
-    filtroProfPainel = Number(e.target.value);
+    filtroProfPainel = e.target.value;
     renderizar();
   };
 }
